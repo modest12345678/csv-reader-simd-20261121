@@ -19,14 +19,14 @@ function section(id, p) { return [id, ...uleb(p.length), ...p]; }
 const I32 = 0x7f, I64 = 0x7e, V128 = 0x7b, VOID = 0x40;
 
 // 24 WASM pages = 1.5 MiB total (512 KiB input slab + 512 KiB output slab + 512 KiB errors/state)
-export const MEM_PAGES   = 16;
+export const MEM_PAGES   = 24;
 export const IN_BASE     = 0x00000;
-export const IN_CAP      = 0x40000;  // 512 KiB input slab (+ 64B zero guard)
-export const OUT_BASE    = 0x40100;
-export const OUT_FLUSH   = 0x7C000;  // ~496 KiB watermark (16 KiB headroom)
-export const ERR_META    = 0x80200; // 256 KiB error structs (20B * 13,107)
-export const EXTRA_BASE  = 0xC0200; // 240 KiB long_row extra JSON strings
-export const STATE_BASE  = 0xFF000; // 4 KiB shared state
+export const IN_CAP      = 0x80000;  // 512 KiB input slab (+ 64B zero guard)
+export const OUT_BASE    = 0x80100;
+export const OUT_FLUSH   = 0xFC000;  // ~496 KiB watermark (16 KiB headroom)
+export const ERR_META    = 0x100200; // 256 KiB error structs (20B * 13,107)
+export const EXTRA_BASE  = 0x140200; // 240 KiB long_row extra JSON strings
+export const STATE_BASE  = 0x17F000; // 4 KiB shared state
 
 const ST_IN_END     = STATE_BASE + 0;
 const ST_IN_EOF     = STATE_BASE + 4;
@@ -1031,7 +1031,7 @@ if (process.argv[1] && process.argv[1].endsWith('build_wasm.mjs')) {
   const out = process.argv[2] || 'C:/Users/HP/.gemini/antigravity/brain/22d079de-3ddb-458d-9e5f-9a42f5f02074/scratch/csv_wasm_v5/t.wasm';
   fs.mkdirSync(out.slice(0, out.lastIndexOf('/')), { recursive: true });
   fs.writeFileSync(out, bytes);
-  console.log('Emitted v5-256k WASM:', bytes.length, 'bytes ->', out);
+  console.log('Emitted v4 WASM:', bytes.length, 'bytes ->', out);
   new WebAssembly.Module(bytes);
   console.log('WebAssembly.Module validation PASSED!');
 }
