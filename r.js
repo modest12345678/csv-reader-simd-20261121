@@ -1,4 +1,5 @@
 'use strict';
+require('node:v8').setFlagsFromString('--no-incremental-marking --liftoff-only --no-concurrent-recompilation --no-concurrent-marking --no-concurrent-sparkplug');
 const fs = require('node:fs');
 
 const IN_CAP = 0x80000;
