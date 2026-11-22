@@ -19,14 +19,14 @@ function section(id, p) { return [id, ...uleb(p.length), ...p]; }
 const I32 = 0x7f, I64 = 0x7e, V128 = 0x7b, VOID = 0x40;
 
 // 24 WASM pages = 1.5 MiB total (512 KiB input slab + 512 KiB output slab + 512 KiB errors/state)
-export const MEM_PAGES   = 24;
+export const MEM_PAGES   = 16;
 export const IN_BASE     = 0x00000;
-export const IN_CAP      = 0x80000;  // 512 KiB input slab (+ 64B zero guard)
-export const OUT_BASE    = 0x80100;
-export const OUT_FLUSH   = 0xFC000;  // ~496 KiB watermark (16 KiB headroom)
-export const ERR_META    = 0x100200; // 256 KiB error structs (20B * 13,107)
-export const EXTRA_BASE  = 0x140200; // 240 KiB long_row extra JSON strings
-export const STATE_BASE  = 0x17F000; // 4 KiB shared state
+export const IN_CAP      = 0x40000;  // 512 KiB input slab (+ 64B zero guard)
+export const OUT_BASE    = 0x40100;
+export const OUT_FLUSH   = 0x7C000;  // ~496 KiB watermark (16 KiB headroom)
+export const ERR_META    = 0x80200; // 256 KiB error structs (20B * 13,107)
+export const EXTRA_BASE  = 0xC0200; // 240 KiB long_row extra JSON strings
+export const STATE_BASE  = 0xFF000; // 4 KiB shared state
 
 const ST_IN_END     = STATE_BASE + 0;
 const ST_IN_EOF     = STATE_BASE + 4;
@@ -542,7 +542,6 @@ export function buildWasm() {
 
     const tryInlineEol = () => {
       c.get(COL).i32(1).i32_add().get(W).i32_eq()
-        .stLoad(ST_REC_CNT).i32(0).i32_gt_s().i32_and()
         .get(END).get(IN).i32_sub().i32(32).i32_ge_u().i32_and()
         .get(DST).i32(OUT_FLUSH).i32_lt_u().i32_and().if_();
         c.get(IN).i32_load(0).set(K);
@@ -666,7 +665,6 @@ export function buildWasm() {
               c.get(CM).get(SM).i32_or().i32_eqz().if_();
                 c.get(IN).i32(16).i32_add().set(IN);
                 c.get(DST).i32(16).i32_add().set(DST);
-                c.get(COL).i32_eqz().if_(); c.i32(ST_ADDED).i32(1).i32_store(0); c.end();
                 c.br('fastLoop');
               c.end();
 
@@ -702,11 +700,7 @@ export function buildWasm() {
                     c.get(CM).i32_ctz().set(K);
                     c.get(K).get(T2).i32_ge_u().br_if('drDone');
                     c.get(K).get(POS).i32_sub().set(SM);
-                    c.get(SM).i32(8).i32_le_u().if_();
-                      c.get(DST).get(IN).get(POS).i32_add().i64_load(0).i64_store(0);
-                    c.else_();
-                      c.get(DST).get(IN).get(POS).i32_add().v128_load(0).v128_store(0);
-                    c.end();
+                    c.get(DST).get(IN).get(POS).i32_add().v128_load(0).v128_store(0);
                     c.get(DST).get(SM).i32_add().set(DST);
                     c.get(COL).i32(1).i32_add().get(W).i32_ge_s().if_();
                       c.get(DST).i32(0x22).i32_store8(0);
@@ -733,14 +727,9 @@ export function buildWasm() {
               c.get(T2).get(POS).i32_sub().set(K);
               c.get(K).if_();
                 c.get(POS).if_();
-                  c.get(K).i32(8).i32_le_u().if_();
-                    c.get(DST).get(IN).get(POS).i32_add().i64_load(0).i64_store(0);
-                  c.else_();
-                    c.get(DST).get(IN).get(POS).i32_add().v128_load(0).v128_store(0);
-                  c.end();
+                  c.get(DST).get(IN).get(POS).i32_add().v128_load(0).v128_store(0);
                 c.end();
                 c.get(DST).get(K).i32_add().set(DST);
-                c.get(COL).i32_eqz().if_(); c.i32(ST_ADDED).i32(1).i32_store(0); c.end();
               c.else_();
                 c.get(POS).i32(16).i32_eq().if_();
                   c.get(IN).i32(16).i32_add().set(IN);
@@ -820,7 +809,7 @@ export function buildWasm() {
                 c.end();
                 // Closing quote at EOL
                 c.get(POS).i32(0x225c).i32_eq().if_();
-                  c.get(COL).i32(1).i32_add().get(W).i32_eq().stLoad(ST_REC_CNT).i32(0).i32_gt_s().i32_and().if_();
+                  c.get(COL).i32(1).i32_add().get(W).i32_eq().if_();
                     c.get(IN).i32(2).i32_add().i32_load(0).set(K);
                     c.i32(0).set(T2);
                     c.get(K).i32(0x6e5c725c).i32_eq().if_(); c.i32(6).set(T2);
@@ -866,6 +855,11 @@ export function buildWasm() {
           c.br('afterCold');
         c.end();
         c.end(); // doColdUnq
+        c.get(COL).i32_eqz().if_();
+          c.get(DST).stLoad(ST_REC_START).stLoad(ST_REC_CNT).i32(2).i32_ge_u().if_(I32).i32(3).else_().i32(2).end().i32_add().i32_gt_u().if_();
+            c.i32(ST_ADDED).i32(1).i32_store(0);
+          c.end();
+        c.end();
         callCold(F_UNQ_COLD);
         c.end(); // afterCold
 
@@ -1032,12 +1026,12 @@ export function buildWasm() {
   return Uint8Array.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, ...typeSec, ...importSec, ...funcSec, ...exportSec, ...codeSec]);
 }
 
-if (process.argv[1] && process.argv[1].endsWith('build_wasm_v4.mjs')) {
+if (process.argv[1] && process.argv[1].endsWith('build_wasm.mjs')) {
   const bytes = buildWasm();
-  const out = process.argv[2] || 'C:/Users/HP/.gemini/antigravity/brain/22d079de-3ddb-458d-9e5f-9a42f5f02074/scratch/csv_wasm_v4/t.wasm';
+  const out = process.argv[2] || 'C:/Users/HP/.gemini/antigravity/brain/22d079de-3ddb-458d-9e5f-9a42f5f02074/scratch/csv_wasm_v5/t.wasm';
   fs.mkdirSync(out.slice(0, out.lastIndexOf('/')), { recursive: true });
   fs.writeFileSync(out, bytes);
-  console.log('Emitted v4 WASM:', bytes.length, 'bytes ->', out);
+  console.log('Emitted v5-256k WASM:', bytes.length, 'bytes ->', out);
   new WebAssembly.Module(bytes);
   console.log('WebAssembly.Module validation PASSED!');
 }
